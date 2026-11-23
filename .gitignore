@@ -10,3 +10,6 @@ results/
 syn/
 docs/model_notes.txt
 xschem/
+pnr/out/
+pnr/last.log
+pnr/route_run.txt
