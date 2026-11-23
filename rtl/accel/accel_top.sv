@@ -2,17 +2,17 @@
 //
 // Wraps the MIT-licensed tiny-tpu systolic array (third_party/tiny-tpu, (c) 2026 Dineth Hettiarachchi)
 // with a small controller + built-in self-test: pseudo-random weights/activations (xorshift32),
-// stream STREAM_LEN activation vectors, sum every south-edge word into a 32-bit signature and compare
+// stream STREAM_LEN activation vectors, fold every cycle's south-edge column sum into a 32-bit rotate-xor signature and compare
 // it with a golden value. Run it at different DVS codes / clocks to find the minimum passing VDD.
 `default_nettype none
 
 module accel_top #(
-    parameter int N          = 4,
+    parameter int N          = 2,
     parameter int DW         = 8,             // operand width (INT8 default; INT4 etc. to save area)
     parameter int ACC_W      = 2*DW + $clog2(N) + 1,  // exact: N products of (2^(DW-1))^2
     parameter int STREAM_LEN = 32,
     parameter logic [31:0] SEED = 32'hC0FFEE01,
-    parameter logic [31:0] GOLD = 32'hFFFE534B  // golden signature = tb_accel_top model
+    parameter logic [31:0] GOLD = 32'h8A667F12  // golden signature = tb_accel_top model
 ) (
     input  logic        clk,
     input  logic        rst_n,
@@ -105,11 +105,11 @@ module accel_top #(
                     if (cnt == 8'(N-1)) begin st <= S_RUN; cnt <= '0; end
                 end
                 S_RUN: begin
-                    rnd <= xs(rnd); cnt <= cnt + 1'b1; sig <= sig + colsum32;
+                    rnd <= xs(rnd); cnt <= cnt + 1'b1; sig <= {sig[30:0], sig[31]} ^ colsum32;
                     if (cnt == 8'(STREAM_LEN-1)) begin st <= S_DRAIN; cnt <= '0; end
                 end
                 S_DRAIN: begin
-                    cnt <= cnt + 1'b1; sig <= sig + colsum32;
+                    cnt <= cnt + 1'b1; sig <= {sig[30:0], sig[31]} ^ colsum32;
                     if (cnt == 8'(2*N+2)) begin st <= S_DONE; done <= 1'b1; pass <= (sig == GOLD) ; run_count <= run_count + 1'b1; end
                 end
                 default: st <= S_IDLE;
