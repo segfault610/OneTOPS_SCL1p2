@@ -80,6 +80,7 @@ module accel_top #(
         end
     end
     wire signed [31:0] colsum32 = colsum;
+    wire [31:0] sig_nxt = {sig[30:0], sig[31]} ^ colsum32;
 
     // xorshift32 step
     function automatic [31:0] xs(input [31:0] x);
@@ -105,12 +106,12 @@ module accel_top #(
                     if (cnt == 8'(N-1)) begin st <= S_RUN; cnt <= '0; end
                 end
                 S_RUN: begin
-                    rnd <= xs(rnd); cnt <= cnt + 1'b1; sig <= {sig[30:0], sig[31]} ^ colsum32;
+                    rnd <= xs(rnd); cnt <= cnt + 1'b1; sig <= sig_nxt;
                     if (cnt == 8'(STREAM_LEN-1)) begin st <= S_DRAIN; cnt <= '0; end
                 end
                 S_DRAIN: begin
-                    cnt <= cnt + 1'b1; sig <= {sig[30:0], sig[31]} ^ colsum32;
-                    if (cnt == 8'(2*N+2)) begin st <= S_DONE; done <= 1'b1; pass <= (sig == GOLD) ; run_count <= run_count + 1'b1; end
+                    cnt <= cnt + 1'b1; sig <= sig_nxt;
+                    if (cnt == 8'(2*N+2)) begin st <= S_DONE; done <= 1'b1; pass <= (sig_nxt == GOLD); run_count <= run_count + 1'b1; end
                 end
                 default: st <= S_IDLE;
             endcase
