@@ -1,0 +1,6 @@
+# SCL PDK files are NDA/proprietary (see headers in the kit): never commit or push them
+pdk_kit/
+comp/poster.png
+*.raw
+sim/
+b3v32check.log
