@@ -52,7 +52,7 @@ SIZES = dict(
     tg_n=dict(W=3, L=1.2), tg_p=dict(W=10, L=1.5),
     rlad="10k",                           # R-DAC unit resistor (16 in series)
     ab=False,                             # adaptive bias off: SCL PMOS Vds-dependence breaks the 1:230 replica ratio (runaway)
-    boost=dict(ub=True, ob=True, obx=True),  # False = remove that path (for A/B studies)
+    boost=dict(ub=True, ob=True, obx=False),  # SCL tuning: OBX pull-up fights UB (undershoot 656 -> 555 mV with it off)  # False = remove that path (for A/B studies)
     mpb0=dict(W=50, L=4),                 # UB sensor bias diode (PMOS), 20 uA
     mpb1=dict(W=25, L=4),                 # UB sensor (PMOS), 10 uA quiescent (< 20 uA dead zone)
     mnb=dict(W=20, L=4), mnb_m=20,        # UB dead-zone diode / x20 pull-down mirror at node X
@@ -62,6 +62,9 @@ SIZES = dict(
     mpo=dict(W=50, L=4), mpo_m=20,        # OBX PMOS dead-zone diode / x20 pull-up mirror at node X
     mpsw=dict(W=60, L=1.5),               # OBX enable switch (PMOS, gate = ben inverted)
 )
+
+import json  # sweep hook: SIZES_JSON='{"mnb_m": 40}' overrides whole SIZES entries (used for tuning runs)
+SIZES.update(json.loads(os.environ.get("SIZES_JSON", "{}")))
 
 # symbol pin geometry for PDK MOS symbols (pin -> (dx, dy, stub direction))
 NMOS_PINS = {"D": (20, -30, "u"), "G": (-20, 0, "l"), "S": (20, 30, "d"), "B": (20, 0, "r")}
