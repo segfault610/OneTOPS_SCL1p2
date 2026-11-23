@@ -4,3 +4,4 @@ comp/poster.png
 *.raw
 sim/
 b3v32check.log
+syn/*.lib

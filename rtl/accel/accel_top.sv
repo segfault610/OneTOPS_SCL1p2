@@ -8,7 +8,8 @@
 
 module accel_top #(
     parameter int N          = 4,
-    parameter int ACC_W      = 20,            // 4 x 127 x 127 = 64516 < 2^19
+    parameter int DW         = 8,             // operand width (INT8 default; INT4 etc. to save area)
+    parameter int ACC_W      = 2*DW + $clog2(N) + 1,  // exact: N products of (2^(DW-1))^2
     parameter int STREAM_LEN = 32,
     parameter logic [31:0] SEED = 32'hC0FFEE01,
     parameter logic [31:0] GOLD = 32'hFFFE534B  // golden signature = tb_accel_top model
@@ -29,19 +30,19 @@ module accel_top #(
     logic [31:0] rnd, sig;
 
     logic arr_rst_n, load_w;
-    logic signed [7:0] w_col [N];
-    logic signed [7:0] a_vec [N];
-    logic signed [7:0] a_dly [N][N];
-    logic signed [7:0] a_west [N];
+    logic signed [DW-1:0] w_col [N];
+    logic signed [DW-1:0] a_vec [N];
+    logic signed [DW-1:0] a_dly [N][N];
+    logic signed [DW-1:0] a_west [N];
     logic signed [ACC_W-1:0] psum_south [N];
-    logic signed [7:0] dbg_w [N][N], dbg_a [N][N];
+    logic signed [DW-1:0] dbg_w [N][N], dbg_a [N][N];
     logic signed [ACC_W-1:0] dbg_p [N][N];
 
     wire running = (st == S_RUN);
 
     for (genvar i = 0; i < N; i++) begin : g_in
-        assign w_col[i] = rnd[8*(i%4) +: 8];
-        assign a_vec[i] = running ? rnd[8*(i%4) +: 8] : 8'sd0;
+        assign w_col[i] = rnd[DW*(i%(32/DW)) +: DW];
+        assign a_vec[i] = running ? rnd[DW*(i%(32/DW)) +: DW] : '0;
         // row i delayed by i cycles (diagonal skew); a_dly[i][0] is the 1-cycle-delayed copy
         if (i == 0) begin : g_r0
             assign a_west[i] = a_vec[i];
@@ -61,7 +62,7 @@ module accel_top #(
         end
     end
 
-    systolic_array #(.N(N), .DATA_W(8), .ACC_W(ACC_W)) u_array (
+    systolic_array #(.N(N), .DATA_W(DW), .ACC_W(ACC_W)) u_array (
         .clk(clk), .rst_n(arr_rst_n), .load_weight(load_w), .weight_col(w_col),
         .act_west(a_west), .psum_south(psum_south),
         .dbg_weight(dbg_w), .dbg_act(dbg_a), .dbg_psum(dbg_p));
