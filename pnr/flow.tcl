@@ -3,13 +3,13 @@
 # librelane container via scripts/run_pnr.sh. Env: DIE (um, square side), CLK_NS, STAGE (fp|place|cts|route)
 set root /work
 set pdk [glob $root/pdk_kit/digital/my_dtech/*/open_source_scl_c1d/open_pdks/sclc1d/libs.ref/digital_c1d]
-set die  [expr {[info exists ::env(DIE)] ? $::env(DIE) : 5000}]
+set die  [expr {[info exists ::env(DIE)] ? $::env(DIE) : 4200}]
 set clk  [expr {[info exists ::env(CLK_NS)] ? $::env(CLK_NS) : 40.0}]
 set out  $root/pnr/out; file mkdir $out
 
 read_liberty $pdk/lib/nldm_tt_27_1p5.lib
 read_lef $pdk/lef/tech_c1d.lef
-read_lef $pdk/lef/core_c1d.lef
+read_lef $root/syn/core_snapped.lef
 read_verilog $root/syn/accel_net.v
 link_design accel_top
 create_clock -name clk -period $clk [get_ports clk]
@@ -51,9 +51,10 @@ filler_placement -prefix FILLER [list FILLER5 FILLER4 FILLER3 FILLER2 FILLER1]
 write_db $out/cts.odb
 if {[info exists ::env(STAGE)] && $::env(STAGE) eq "cts"} { report_design_area; exit }
 
+foreach nm {zero_ one_} { set n [[ord::get_db_block] findNet $nm]; if {$n ne "NULL"} { $n setSigType SIGNAL } }
 set_routing_layers -signal metal1-metal2 -clock metal1-metal2
 global_route -allow_congestion -verbose
-detailed_route -top_routing_layer metal2 -via_in_pin_bottom_layer metal1 -via_in_pin_top_layer metal2 -output_drc $out/drc.rpt
+detailed_route -via_in_pin_bottom_layer metal1 -via_in_pin_top_layer metal2 -output_drc $out/drc.rpt
 write_db $out/route.odb
 write_def $out/accel_top.def
 report_design_area
