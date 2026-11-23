@@ -5,3 +5,8 @@ comp/poster.png
 sim/
 b3v32check.log
 syn/*.lib
+char/
+results/
+syn/
+docs/model_notes.txt
+xschem/
