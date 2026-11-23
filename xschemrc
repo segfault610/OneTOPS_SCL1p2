@@ -1,0 +1,11 @@
+# OneTOPS-SCL project xschemrc: SCL 1.2um C1D pcell symbols + project library
+set PDK_ROOT [file dirname [info script]]/pdk_kit/analog/Open_Source_SCL_1.2micron_PDK/open_source_scl_c1d/open_pdks
+set PDK scl_c1d
+set ::env(PDK_ROOT) $PDK_ROOT
+set ::env(PDK) $PDK
+set XSCHEM_SHAREDIR /usr/local/share/xschem
+set WORKING_DIR [file dirname [info script]]/xschem
+source $PDK_ROOT/$PDK/libs.tech/xschem/xschemrc
+append XSCHEM_LIBRARY_PATH :$XSCHEM_SHAREDIR/xschem_library
+append XSCHEM_LIBRARY_PATH :[file dirname [info script]]/xschem
+set netlist_dir [file dirname [info script]]/sim/xschem_netlist

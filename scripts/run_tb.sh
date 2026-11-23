@@ -5,6 +5,7 @@
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NL="$ROOT/sim/xschem_netlist"; mkdir -p "$NL" "$ROOT/results"
+export PDK_ROOT="$ROOT/pdk_kit/analog/Open_Source_SCL_1.2micron_PDK/open_source_scl_c1d/open_pdks" PDK=scl_c1d
 [ -f "$NL/.spiceinit" ] || cp /usr/local/share/pdk/sky130A/libs.tech/ngspice/spinit "$NL/.spiceinit"
 tbs=("$@"); [ "$1" = all ] && tbs=($(cd "$ROOT/xschem/onetops_tb" && ls tb_*.sch | sed 's/\.sch$//'))
 [ -f "$ROOT/sim/ams/dvs_ctrl.so" ] || "$ROOT/scripts/build_ams.sh"

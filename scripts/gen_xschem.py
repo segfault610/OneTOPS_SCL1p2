@@ -21,42 +21,46 @@ import os
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 LIB = "onetops"
 TBLIB = "onetops_tb"
-PR = "sky130_fd_pr"
+PR = "scl_pcell"
 HDR = "v {xschem version=3.4.8RC file_version=1.2 }\n"
-PDK_LIB = "/usr/local/share/pdk/sky130A/libs.tech/combined/sky130.lib.spice"
+PDK_LIB = "$PDK_ROOT/$PDK/libs.tech/ngpsice/model/hspice/models49/header.lib"  # needs PDK_ROOT/PDK env (run_tb.sh)
+VIN = 4.5   # supply (V); VOUT = VLO + STEP*code
+VLO, STEP = 3.90, 0.02
+VHI = VLO + 16 * STEP
 
 # ---------------------------------------------------------------- sizing (Rev A) --
 SIZES = dict(
-    bias=dict(W=4, L=1),                  # NMOS mirror bank, 20 uA unit (gm/Id ~ 10)
-    bias_base=dict(W=1, L=1),             # Rev D: o_fvf / o_pd base bias = 5 uA (adaptive part added by ab_sense)
-    bleed_m=2,                            # (dynamic) bleeder MND = 2 x IB = 40 uA quiescent (Rev C: 5 x = 100 uA)
-    ab_sense=dict(W=1.4, L=0.35),         # Rev D: pass replica, 1/500 of the 700 um pass device -> Iload/500
-    ab_mirror=dict(W=4, L=1),             # sensed-current mirror into X sink and replica path (1:1)
+    bias=dict(W=20, L=4),                 # NMOS mirror bank, 20 uA unit (Vgs ~ 1.2 V)
+    bias_base=dict(W=5, L=4),           # o_fvf / o_pd base bias = 5 uA (adaptive part added by ab_sense)
+    bleed_m=2,                            # (dynamic) bleeder MND = 2 x IB = 40 uA quiescent
+    ab_sense=dict(W=10, L=1.5),           # pass replica = 1 unit of 230 (SCL PMOS model is broken for W<~9 um) -> Iload/230
+    ab_mirror=dict(W=20, L=4),            # sensed-current diode
+    ab_mirror_o=dict(W=10, L=4),           # outputs to X sink and replica path: 1:0.5 => Iload/460
     tail_m=2,                             # OTA tail = 2 x IB
-    mc=dict(W=100, L=1),                  # FVF control PMOS (LVT), gm/Id ~ 14 @ 20 uA
-    mr=dict(W=100, L=1),                  # replica PMOS (LVT), must match MC
-    mpsrc=dict(W=10, L=2),                # replica current source PMOS mirror (LVT)
-    ota_in=dict(W=5, L=1),                # OTA NMOS input pair
-    ota_ld=dict(W=20, L=2),               # OTA PMOS (LVT) mirror load
+    mc=dict(W=25, L=2),                   # FVF control PMOS (single-Vt in SCL)
+    mr=dict(W=25, L=2),                   # replica PMOS, must match MC
+    mpsrc=dict(W=10, L=4),                 # replica current source PMOS mirror
+    ota_in=dict(W=50, L=2),               # OTA NMOS input pair
+    ota_ld=dict(W=50, L=4),               # OTA PMOS mirror load
     cset="2p",                            # VSET filter / dominant-pole cap
-    mp=dict(W=10, L=0.35, mult=70),       # pass device, std-Vt PMOS, 700 um total
-    rz="1", cc="4p",                      # Miller compensation (Rz=1 ohm => plain Cc). Rev A: 12p @ CL=100p
-    cl="20p",                             # on-chip output decap (TT area budget). TODO: MIM
-    ld_unit_m=32, ld=dict(W=4, L=1),      # load_emu unit sink = 32 x 20 uA = 0.64 mA (bits x1,x2,x4,x8)
-    ld_sw=dict(W=20, L=0.15),             # load_emu series switch per unit
-    inv_n=dict(W=1, L=0.15), inv_p=dict(W=2, L=0.15),
-    tg_n=dict(W=1, L=0.15), tg_p=dict(W=2, L=0.15),
+    mp=dict(W=10, L=1.5, mult=230),       # pass device, 2300 um total (SCL PMOS is weak: ~4 uA/um at |Vsg| 1.5 V)
+    rz="1", cc="4p",                      # Miller compensation (placeholder, re-tune in sim)
+    cl="20p",                             # on-chip output decap (MOS cap, ~1.4 fF/um2 => ~14000 um2)
+    ld_unit_m=32, ld=dict(W=20, L=4),     # load_emu unit sink = 32 x 20 uA = 0.64 mA (bits x1,x2,x4,x8)
+    ld_sw=dict(W=100, L=1.2),             # load_emu series switch per unit
+    inv_n=dict(W=3, L=1.2), inv_p=dict(W=10, L=1.5),
+    tg_n=dict(W=3, L=1.2), tg_p=dict(W=10, L=1.5),
     rlad="10k",                           # R-DAC unit resistor (16 in series)
-    # ---- tr_boost (Rev C): undershoot booster (UB) + overshoot booster (OB)
+    ab=False,                             # adaptive bias off: SCL PMOS Vds-dependence breaks the 1:230 replica ratio (runaway)
     boost=dict(ub=True, ob=True, obx=True),  # False = remove that path (for A/B studies)
-    mpb0=dict(W=40, L=0.5),               # UB sensor bias diode (LVT PMOS), 20 uA
-    mpb1=dict(W=20, L=0.5),               # UB sensor (LVT PMOS), 10 uA quiescent (< 20 uA dead zone)
-    mnb=dict(W=2, L=0.5), mnb_m=20,       # UB dead-zone diode / x20 pull-down mirror at node X
-    msw=dict(W=10, L=0.15),               # UB enable switch (ben)
-    rb="1Meg", cbu="0.5p", cbo="0.5p",    # coupling: R to bias, Cb from VOUT (tau ~ 0.5 us). TODO: pseudo-R
-    mns=dict(W=2, L=1),                   # OBX NMOS sensor on the coupled bleeder gate, 10 uA quiescent
-    mpo=dict(W=4, L=0.5), mpo_m=20,       # OBX PMOS (std-Vt) dead-zone diode / x20 pull-up mirror at node X
-    mpsw=dict(W=20, L=0.15),              # OBX enable switch (PMOS, gate = ben inverted)
+    mpb0=dict(W=50, L=4),                 # UB sensor bias diode (PMOS), 20 uA
+    mpb1=dict(W=25, L=4),                 # UB sensor (PMOS), 10 uA quiescent (< 20 uA dead zone)
+    mnb=dict(W=20, L=4), mnb_m=20,        # UB dead-zone diode / x20 pull-down mirror at node X
+    msw=dict(W=20, L=1.2),                # UB enable switch (ben)
+    rb="1Meg", cbu="0.5p", cbo="0.5p",    # coupling: R to bias, Cb from VOUT (tau ~ 0.5 us)
+    mns=dict(W=10, L=4),                   # OBX NMOS sensor on the coupled bleeder gate, 10 uA quiescent
+    mpo=dict(W=50, L=4), mpo_m=20,        # OBX PMOS dead-zone diode / x20 pull-up mirror at node X
+    mpsw=dict(W=60, L=1.5),               # OBX enable switch (PMOS, gate = ben inverted)
 )
 
 # symbol pin geometry for PDK MOS symbols (pin -> (dx, dy, stub direction))
@@ -96,16 +100,19 @@ class Sch:
             self._label(x + dx, y + dy, d, net)
 
     def mos(self, kind, name, x, y, conn, W, L, mult=1):
-        """kind: nfet_01v8 | pfet_01v8 | pfet_01v8_lvt | nfet_01v8_lvt; conn: {D,G,S,B: net}"""
+        """kind: nfet* | pfet* (every flavour maps to the single SCL n / p device); conn: {D,G,S,B: net}.
+        W, L in um. SCL pcell symbols emit a plain M-card: M<name> d g s b <model> L= W= ..."""
+        pm = kind.startswith("pfet")
+        sym = "pmos4_p_c1d" if pm else "nmos4_n_c1d"
         self.lines.append(
-            f"C {{{PR}/{kind}.sym}} {x} {y} 0 0 {{name={name}\nL={L}\nW={W}\nnf=1\nmult={mult}\n"
-            f"ad=\"expr('int((@nf + 1)/2) * @W / @nf * 0.29')\"\n"
-            f"pd=\"expr('2*int((@nf + 1)/2) * (@W / @nf + 0.29)')\"\n"
-            f"as=\"expr('int((@nf + 2)/2) * @W / @nf * 0.29')\"\n"
-            f"ps=\"expr('2*int((@nf + 2)/2) * (@W / @nf + 0.29)')\"\n"
-            f"nrd=\"expr('0.29 / @W ')\" nrs=\"expr('0.29 / @W ')\"\n"
-            f"sa=0 sb=0 sd=0\nmodel={kind}\nspiceprefix=X\n}}")
-        self._connect(x, y, PMOS_PINS if kind.startswith("pfet") else NMOS_PINS, conn)
+            f"C {{{sym}.sym}} {x} {y} 0 0 {{name={name}\nL={L}u\nW={W}u\nnf=1\nmult={mult}\n"
+            f"ad=\"expr('int((@nf + 1)/2) * @W / @nf * 3.9e-6')\"\n"
+            f"pd=\"expr('2*int((@nf + 1)/2) * (@W / @nf + 3.9e-6)')\"\n"
+            f"as=\"expr('int((@nf + 2)/2) * @W / @nf * 3.9e-6')\"\n"
+            f"ps=\"expr('2*int((@nf + 2)/2) * (@W / @nf + 3.9e-6)')\"\n"
+            f"nrd=\"expr('1.95e-6 / @W ')\" nrs=\"expr('1.95e-6 / @W ')\"\n"
+            f"sa=0 sb=0 sd=0\nmodel={'p' if pm else 'n'}\nspiceprefix=M\n}}")
+        self._connect(x, y, PMOS_PINS if pm else NMOS_PINS, conn)
 
     def two(self, sym, name, x, y, p, m, value):
         """res / capa / vsource / isource: p = top pin net, m = bottom pin net."""
@@ -197,7 +204,7 @@ S = SIZES
 # ============================================================ L0 primitives ====
 def gen_inv():
     p = cell("inv", [("a", "in")], [("y", "out")], top=[("vdd", "inout")], bottom=[("vss", "inout")])
-    s = Sch("inv -- L0 static CMOS inverter (1.8 V)")
+    s = Sch("inv -- L0 static CMOS inverter (VIN swing, 4.5 V)")
     s.ports(["a"], ["y"], ["vdd", "vss"])
     s.mos("pfet_01v8", "MP1", 0, -100, dict(S="vdd", G="a", D="y", B="vdd"), **S["inv_p"])
     s.mos("nfet_01v8", "MN1", 0, 50, dict(D="y", G="a", S="vss", B="vss"), **S["inv_n"])
@@ -368,13 +375,13 @@ def gen_tr_boost():
 
 def gen_ab_sense():
     p = cell("ab_sense", [("g", "in")], [("o_x", "out"), ("o_rep", "out")], top=[("vin", "inout")], bottom=[("vss", "inout")])
-    s = Sch("ab_sense -- L1 adaptive bias (Rev D): pass-device replica senses Iload/500 and adds it to the MC bias "
+    s = Sch("ab_sense -- L1 adaptive bias (Rev D): pass-device replica senses Iload/460 and adds it to the MC bias "
             "(sink at X) and to the VSET replica, so VOUT does not shift")
     s.ports(["g"], ["o_x", "o_rep"], ["vin", "vss"])
     s.mos("pfet_01v8", "MS", 0, -150, dict(S="vin", G="g", D="ns", B="vin"), **S["ab_sense"])
     s.mos("nfet_01v8", "MSD", 0, 100, dict(D="ns", G="ns", S="vss", B="vss"), **S["ab_mirror"])
-    s.mos("nfet_01v8", "MSX", 250, 100, dict(D="o_x", G="ns", S="vss", B="vss"), **S["ab_mirror"])
-    s.mos("nfet_01v8", "MSR", 500, 100, dict(D="o_rep", G="ns", S="vss", B="vss"), **S["ab_mirror"])
+    s.mos("nfet_01v8", "MSX", 250, 100, dict(D="o_x", G="ns", S="vss", B="vss"), **S["ab_mirror_o"])
+    s.mos("nfet_01v8", "MSR", 500, 100, dict(D="o_rep", G="ns", S="vss", B="vss"), **S["ab_mirror_o"])
     s.text(0, 230, "Layout: MS must sit inside the pass-device array (same Vth/stress) for a good 1:500 ratio", 0.3)
     s.write(p)
 
@@ -392,7 +399,8 @@ def gen_ldo_core():
     s.inst("lg_probe", "xprobe", 1000, 250, dict(drv="x", lin="xg"))
     s.inst("pass_pmos", "xpass", 1400, 0, dict(g="xg", vout="vout", vin="vin"))
     s.inst("comp_rc", "xcomp", 1400, 250, dict(a="x", b="vout"))
-    s.inst("ab_sense", "xab", 1800, 0, dict(g="xg", o_x="x", o_rep="i_pd", vin="vin", vss="vss"))
+    if S["ab"]:
+        s.inst("ab_sense", "xab", 1800, 0, dict(g="xg", o_x="x", o_rep="i_pd", vin="vin", vss="vss"))
     s.write(p)
 
 
@@ -423,7 +431,7 @@ def gen_load_emu():
 def gen_ldo_top():
     left = [("vhi", "inout"), ("vlo", "inout"), ("d0", "in"), ("d1", "in"), ("d2", "in"), ("d3", "in"), ("ibn", "in"), ("ben", "in")]
     p = cell("ldo_top", left, [("vout", "inout")], top=[("vin", "inout")], bottom=[("vss", "inout")])
-    s = Sch("ldo_top -- L3 DVS LDO: 4-bit code -> rdac4 -> VREF -> ldo_core. VOUT = 1.00 + 0.03*code V")
+    s = Sch("ldo_top -- L3 DVS LDO: 4-bit code -> rdac4 -> VREF -> ldo_core. VOUT = 3.90 + 0.02*code V")
     s.ports(["d0", "d1", "d2", "d3", "ibn", "ben"], [], ["vhi", "vlo", "vout", "vin", "vss"])
     s.inst("rdac4", "xdac", 0, 0, dict(vhi="vhi", vlo="vlo", d0="d0", d1="d1", d2="d2", d3="d3", out="vref", vdd="vin", vss="vss"))
     s.inst("ldo_core", "xcore", 500, 0, dict(vref="vref", ibn="ibn", ben="ben", vout="vout", vin="vin", vss="vss"))
@@ -471,28 +479,28 @@ def tb(name, title, build, control):
     ngspice under-resolves 10 ns load edges (the L4 dip read 258 mV instead of 329 mV)."""
     s = Sch(title)
     build(s)
-    s.code("MODELS", -300, 400, f".lib {PDK_LIB} tt\n.temp 27\n.option savecurrents")
+    s.code("MODELS", -300, 400, f".lib {PDK_LIB} NOM\n.temp 27\n.option savecurrents")
     s.code("NGSPICE", 400, 400, with_plots(name, control))
     s.write(os.path.join(ROOT, "xschem", TBLIB, name + ".sch"))
 
 
-def supplies(s, vin="1.8", ib="20u", ben=True):
+def supplies(s, vin=str(VIN), ib="20u", ben=True):
     s.two("vsource", "Vin", -200, 0, "vin", "0", f"dc {vin} ac 0")
     s.two("isource", "Ib", -100, 0, "vin", "ibn", f"dc {ib}")
     if ben:
-        s.two("vsource", "Vben", -300, 0, "ben", "0", "dc 1.8")
+        s.two("vsource", "Vben", -300, 0, "ben", "0", f"dc {VIN}")
 
 
 def gen_tbs():
     # ---- L1: bias mirror output currents vs output voltage
     def b_bias(s):
-        s.two("vsource", "Vdd", -200, 0, "vdd", "0", "1.8")
+        s.two("vsource", "Vdd", -200, 0, "vdd", "0", str(VIN))
         s.two("isource", "Ib", -100, 0, "vdd", "ibn", "dc 20u")
         s.inst("bias_mirror", "xdut", 200, 0, dict(ibn="ibn", o_fvf="o1", o_pd="o2", o_tail="o3", o_bu="o4", o_dz="o5", vss="0"))
         for i in range(1, 6):
             s.two("vsource", f"Vo{i}", 450 + 100 * i, 0, f"o{i}", "0", "dc 0.6")
     tb("tb_bias_mirror", "tb_bias_mirror -- L1: mirror output currents vs Vds (compliance)", b_bias, """.control
-dc vo1 0 1.8 0.01
+dc vo1 0 4.5 0.01
 let i1 = -i(vo1)
 let i2 = -i(vo2)
 meas dc i_fvf_06 find i1 at=0.6
@@ -500,33 +508,33 @@ meas dc i_fvf_06 find i1 at=0.6
 let i95 = 0.95*i_fvf_06
 meas dc vds_min when i1=i95 cross=1
 op
-print -i(vo1) -i(vo2) -i(vo3) -i(vo4) -i(vo5)
+echo IBIAS fvf=$&i(vo1) pd=$&i(vo2) tail=$&i(vo3) bu=$&i(vo4) dz=$&i(vo5)
 .endc""")
 
     # ---- L1: vset_gen DC tracking over the DVS range
     def b_vset(s):
         supplies(s)
-        s.two("vsource", "Vref", 0, 0, "vref", "0", "dc 1.2")
+        s.two("vsource", "Vref", 0, 0, "vref", "0", "dc 4.0")
         s.inst("bias_mirror", "xbias", 300, 0, dict(ibn="ibn", o_fvf="x", o_pd="i_pd", o_tail="i_tail", o_bu="vb1", o_dz="vb2", vss="0"))
-        s.two("vsource", "Vx", 550, 0, "x", "0", "dc 0.8")
-        s.two("vsource", "Vb1", 650, 0, "vb1", "0", "dc 1.2")
-        s.two("vsource", "Vb2", 750, 0, "vb2", "0", "dc 1.2")
+        s.two("vsource", "Vx", 550, 0, "x", "0", "dc 3.3")
+        s.two("vsource", "Vb1", 650, 0, "vb1", "0", "dc 3.4")
+        s.two("vsource", "Vb2", 750, 0, "vb2", "0", "dc 3.4")
         s.inst("vset_gen", "xdut", 900, 0, dict(vref="vref", i_pd="i_pd", i_tail="i_tail", vset="vset", vin="vin"))
     tb("tb_vset_gen", "tb_vset_gen -- L1: VSET tracking, replica error (vrep - vref) vs VREF", b_vset, """.control
-dc vref 0.95 1.5 0.05
+dc vref 3.85 4.25 0.05
 let err_mV = (v(xdut.vrep) - v(vref))*1000
 print v(vref) v(vset) err_mV
 .endc""")
 
     # ---- L1: R-DAC all 16 codes (binary counter on d0..d3, 1 us per code)
     def b_dac(s):
-        s.two("vsource", "Vdd", -200, 0, "vdd", "0", "1.8")
-        s.two("vsource", "Vhi", -100, 0, "vhi", "0", "1.48")
-        s.two("vsource", "Vlo", 0, 0, "vlo", "0", "1.00")
+        s.two("vsource", "Vdd", -200, 0, "vdd", "0", str(VIN))
+        s.two("vsource", "Vhi", -100, 0, "vhi", "0", str(VHI))
+        s.two("vsource", "Vlo", 0, 0, "vlo", "0", str(VLO))
         for b in range(4):
             per = 2e-6 * 2 ** b
             s.two("vsource", f"Vd{b}", 100 + 100 * b, 0, f"d{b}", "0",
-                  f"pulse(0 1.8 {per / 2:g} 1n 1n {per / 2 - 1e-9:g} {per:g})")
+                  f"pulse(0 {VIN} {per / 2:g} 1n 1n {per / 2 - 1e-9:g} {per:g})")
         s.inst("rdac4", "xdut", 700, 0, dict(vhi="vhi", vlo="vlo", d0="d0", d1="d1", d2="d2", d3="d3", out="out", vdd="vdd", vss="0"))
         s.two("capa", "Cl", 1000, 0, "out", "0", "100f")
     tb("tb_rdac4", "tb_rdac4 -- L1: 16-code staircase, monotonicity / DNL", b_dac, """.control
@@ -546,7 +554,7 @@ end
 
     def b_core(s, tran=False):
         supplies(s)
-        s.two("vsource", "Vref", 0, 0, "vref", "0", "dc 1.2")
+        s.two("vsource", "Vref", 0, 0, "vref", "0", "dc 4.0")
         s.inst("ldo_core", "xldo", 300, 0, dict(vref="vref", ibn="ibn", ben="ben", vout="vout", vin="vin", vss="0"))
         il = "pwl(0 0.1m 2u 0.1m {2u+tedge} 10m 6u 10m {6u+tedge} 0.1m 12u 0.1m)" if tran else "dc 1m"
         s.two("isource", "Il", 600, 0, "vout", "0", il)
@@ -562,14 +570,14 @@ meas dc vfl find v(vout) at=10m
 let loadreg_mV_per_mA = (vnl - vfl)/10*1000
 print loadreg_mV_per_mA
 alter il dc=0
-dc vin 1.5 1.98 0.01
-meas dc iq find i(vin) at=1.8
+dc vin 4.2 4.95 0.01
+meas dc iq find i(vin) at=4.5
 let iq_uA = -iq*1e6
 print iq_uA
 alter il dc=10m
-dc vin 1.3 1.98 0.01
-meas dc v18 find v(vout) at=1.8
-meas dc v165 find v(vout) at=1.65
+dc vin 4.2 4.95 0.01
+meas dc v18 find v(vout) at=4.5
+meas dc v165 find v(vout) at=4.35
 let linereg_mV_per_V = (v18 - v165)/0.15*1000
 print linereg_mV_per_V
 .endc""")
@@ -615,7 +623,7 @@ end
     # ---- L2: ldo_core load transient
     tran_ctl = """.param tedge=100n
 .control
-foreach ben 1.8 0
+foreach ben 4.5 0
   foreach tr 100n 10n
     alterparam tedge=$tr
     reset
@@ -642,12 +650,12 @@ end
     # ---- L3: DVS code steps at 5 mA
     def b_top(s):
         supplies(s)
-        s.two("vsource", "Vhi", 0, 0, "vhi", "0", "1.48")
-        s.two("vsource", "Vlo", 100, 0, "vlo", "0", "1.00")
+        s.two("vsource", "Vhi", 0, 0, "vhi", "0", str(VHI))
+        s.two("vsource", "Vlo", 100, 0, "vlo", "0", str(VLO))
         for b in range(4):
             per = 10e-6 * 2 ** b
             s.two("vsource", f"Vd{b}", 200 + 100 * b, 0, f"d{b}", "0",
-                  f"pulse(0 1.8 {per / 2:g} 10n 10n {per / 2 - 1e-8:g} {per:g})")
+                  f"pulse(0 {VIN} {per / 2:g} 10n 10n {per / 2 - 1e-8:g} {per:g})")
         s.inst("ldo_top", "xtop", 900, 0, dict(vhi="vhi", vlo="vlo", d0="d0", d1="d1", d2="d2", d3="d3",
                                               ibn="ibn", ben="ben", vout="vout", vin="vin", vss="0"))
         s.two("isource", "Il", 1200, 0, "vout", "0", "dc 5m")
@@ -660,7 +668,7 @@ while k < 16
   let tt = 4.5u + k*5u
   meas tran vr find v(xtop.vref) at=$&tt
   meas tran vo find v(vout) at=$&tt
-  let e = (vo - (1.0 + 0.03*k))*1000
+  let e = (vo - (3.90 + 0.02*k))*1000
   echo $&k  $&vr  $&vo  $&e
   let k = k + 1
 end
@@ -671,11 +679,11 @@ write tb_ldo_top_dvs.raw
     def b_chip(s):
         supplies(s)
         s.two("isource", "Ibl", 0, 0, "vin", "ibl", "dc 20u")
-        s.two("vsource", "Vhi", 100, 0, "vhi", "0", "1.48")
-        s.two("vsource", "Vlo", 200, 0, "vlo", "0", "1.00")
-        # DVS code: 7 (1.21 V) -> 10 (1.30 V) at 30 us (pre-boost for inference) -> 4 (1.12 V) at 50 us
-        code = {0: "pwl(0 1.8 30u 1.8 30.01u 0 50u 0 50.01u 0)", 1: "pwl(0 1.8 30u 1.8 30.01u 1.8 50u 1.8 50.01u 0)",
-                2: "pwl(0 1.8 30u 1.8 30.01u 0 50u 0 50.01u 1.8)", 3: "pwl(0 0 30u 0 30.01u 1.8 50u 1.8 50.01u 0)"}
+        s.two("vsource", "Vhi", 100, 0, "vhi", "0", str(VHI))
+        s.two("vsource", "Vlo", 200, 0, "vlo", "0", str(VLO))
+        # DVS code: 7 (4.04 V) -> 10 (4.10 V) at 30 us (pre-boost for inference) -> 4 (3.98 V) at 50 us
+        code = {0: "pwl(0 4.5 30u 4.5 30.01u 0 50u 0 50.01u 0)", 1: "pwl(0 4.5 30u 4.5 30.01u 4.5 50u 4.5 50.01u 0)",
+                2: "pwl(0 4.5 30u 4.5 30.01u 0 50u 0 50.01u 4.5)", 3: "pwl(0 0 30u 0 30.01u 4.5 50u 4.5 50.01u 0)"}
         for b in range(4):
             s.two("vsource", f"Vd{b}", 300 + 100 * b, 0, f"d{b}", "0", code[b])
         # workload: sleep 0 mA | sense 1.28 mA (ld1) @10us | inference 9.6 mA (all) @35us | comm 5.1 mA (ld3) @45us | sleep @55us
@@ -684,7 +692,7 @@ write tb_ldo_top_dvs.raw
             pts = ["0 0"]
             lvl = 0
             for t, v in ev:
-                pts += [f"{t}u {1.8 * lvl:g}", f"{t}.01u {1.8 * v:g}"]
+                pts += [f"{t}u {VIN * lvl:g}", f"{t}.01u {VIN * v:g}"]
                 lvl = v
             s.two("vsource", f"Vl{b}", 700 + 100 * b, 0, f"ld{b}", "0", "pwl(" + " ".join(pts) + ")")
         s.inst("chip_top", "xchip", 1400, 0, dict(vhi="vhi", vlo="vlo", d0="d0", d1="d1", d2="d2", d3="d3", ibn="ibn", ben="ben",
@@ -692,7 +700,7 @@ write tb_ldo_top_dvs.raw
         s.two("capa", "Cpad", 1700, 0, "vout", "0", "5p")
     tb("tb_chip_workload", "tb_chip_workload -- L4: sleep -> sense -> DVS up -> inference -> comm -> DVS down -> sleep",
        b_chip, """.control
-foreach ben 1.8 0
+foreach ben 4.5 0
 alter @vben[dc]=$ben
 echo WORKLOAD BEN=$ben
 tran 5n 70u 0 1n
@@ -723,14 +731,14 @@ end
     def b_ams(s):
         supplies(s, ben=False)
         s.two("isource", "Ibl", 0, 0, "vin", "ibl", "dc 20u")
-        s.two("vsource", "Vhi", 100, 0, "vhi", "0", "1.48")
-        s.two("vsource", "Vlo", 200, 0, "vlo", "0", "1.00")
+        s.two("vsource", "Vhi", 100, 0, "vhi", "0", str(VHI))
+        s.two("vsource", "Vlo", 200, 0, "vlo", "0", str(VLO))
         # Edge-AI load: sense 1.28 mA @ 5 us, inference 9.6 mA @ 18 us (inside the hint window), sleep @ 26 us
         lv = {0: [(18, 1), (26, 0)], 1: [(5, 1), (26, 0)], 2: [(18, 1), (26, 0)], 3: [(18, 1), (26, 0)]}
         for b, ev in lv.items():
             pts, lvl = ["0 0"], 0
             for t, v in ev:
-                pts += [f"{t}u {1.8 * lvl:g}", f"{t}.01u {1.8 * v:g}"]
+                pts += [f"{t}u {VIN * lvl:g}", f"{t}.01u {VIN * v:g}"]
                 lvl = v
             s.two("vsource", f"Vl{b}", 300 + 100 * b, 0, f"ld{b}", "0", "pwl(" + " ".join(pts) + ")")
         s.inst("chip_top", "xchip", 1000, 0, dict(vhi="vhi", vlo="vlo", d0="d0", d1="d1", d2="d2", d3="d3", ibn="ibn", ben="ben",
@@ -740,25 +748,25 @@ end
                "instance in the NGSPICE block. code_out -> d3..d0, boost_en -> ben", 0.3)
     tb("tb_ams_dvs_ctrl", "tb_ams_dvs_ctrl -- L4 AMS: dvs_ctrl RTL (d_cosim) + chip_top. Hint pre-boost before an AI burst",
        b_ams, """* ---- digital side (XSPICE). Stimulus: analog PWL -> adc_bridge
-Vclk aclk 0 pulse(0 1.8 0 1n 1n 49n 100n)
-Vrst arst 0 pwl(0 0 1u 0 1.001u 1.8)
+Vclk aclk 0 pulse(0 4.5 0 1n 1n 49n 100n)
+Vrst arst 0 pwl(0 0 1u 0 1.001u 4.5)
 * code_req = 7 (0111) until 30 us, then 4 (0100)
 Vcr3 acr3 0 dc 0
-Vcr2 acr2 0 dc 1.8
-Vcr1 acr1 0 pwl(0 1.8 30u 1.8 30.001u 0)
-Vcr0 acr0 0 pwl(0 1.8 30u 1.8 30.001u 0)
+Vcr2 acr2 0 dc 4.5
+Vcr1 acr1 0 pwl(0 4.5 30u 4.5 30.001u 0)
+Vcr0 acr0 0 pwl(0 4.5 30u 4.5 30.001u 0)
 * workload hint: AI burst expected -> raise VOUT 3 codes and enable boost (12 us .. 28 us)
-Vhint ahint 0 pwl(0 0 12u 0 12.001u 1.8 28u 1.8 28.001u 0)
+Vhint ahint 0 pwl(0 0 12u 0 12.001u 4.5 28u 4.5 28.001u 0)
 abrin [aclk arst acr3 acr2 acr1 acr0 ahint] [dclk drst dcr3 dcr2 dcr1 dcr0 dhint] adcb
-.model adcb adc_bridge in_low=0.9 in_high=0.9
+.model adcb adc_bridge in_low=2.25 in_high=2.25
 * port order = Verilog port order, vectors MSB first
 adut [dclk drst dcr3 dcr2 dcr1 dcr0 dhint] [dco3 dco2 dco1 dco0 dben dset] dvs
 .model dvs d_cosim simulation=../ams/dvs_ctrl.so
 abrout [dco3 dco2 dco1 dco0 dben dset] [d3 d2 d1 d0 ben settled] dacb
-.model dacb dac_bridge out_low=0 out_high=1.8 t_rise=2n t_fall=2n
+.model dacb dac_bridge out_low=0 out_high=4.5 t_rise=2n t_fall=2n
 .control
 tran 5n 45u 0 1n
-let code = (v(d0) + 2*v(d1) + 4*v(d2) + 8*v(d3))/1.8
+let code = (v(d0) + 2*v(d1) + 4*v(d2) + 8*v(d3))/4.5
 meas tran code_a find code at=11.5u
 meas tran vout_a find v(vout) at=11.5u
 meas tran code_b find code at=17.5u
