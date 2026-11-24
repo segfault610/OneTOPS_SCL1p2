@@ -8,8 +8,9 @@ set clk  [expr {[info exists ::env(CLK_NS)] ? $::env(CLK_NS) : 40.0}]
 set out  $root/pnr/out; file mkdir $out
 
 read_liberty $pdk/lib/nldm_tt_27_1p5.lib
-read_lef $pdk/lef/tech_c1d.lef
+read_lef $root/syn/tech_snapped.lef   ;# vendor tech LEF with the CORE site widened to 4.2 um (scripts/snap_lef.py)
 read_lef $root/syn/core_snapped.lef
+read_lef $root/syn/fill_x.lef   ;# scripts/mkfill.py
 read_verilog $root/syn/accel_net.v
 link_design accel_top
 create_clock -name clk -period $clk [get_ports clk]
@@ -47,13 +48,13 @@ set_propagated_clock [all_clocks]
 clock_tree_synthesis -root_buf INVR01 -buf_list "INVR01" -sink_clustering_enable
 repair_clock_nets
 detailed_placement
-filler_placement -prefix FILLER [list FILLER5 FILLER4 FILLER3 FILLER2 FILLER1]
+filler_placement -prefix FILLER [list FILLX8 FILLX4 FILLX2 FILLX1]
 write_db $out/cts.odb
 if {[info exists ::env(STAGE)] && $::env(STAGE) eq "cts"} { report_design_area; exit }
 
 foreach nm {zero_ one_} { set n [[ord::get_db_block] findNet $nm]; if {$n ne "NULL"} { $n setSigType SIGNAL } }
 set_routing_layers -signal metal1-metal2 -clock metal1-metal2
-global_route -allow_congestion -verbose
+global_route -allow_congestion -congestion_iterations 0   ;# extra iterations crash est:: on this build
 detailed_route -via_in_pin_bottom_layer metal1 -via_in_pin_top_layer metal2 -output_drc $out/drc.rpt
 write_db $out/route.odb
 write_def $out/accel_top.def
