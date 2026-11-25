@@ -38,6 +38,7 @@ pdngen
 write_db $out/pdn.odb
 if {[info exists ::env(STAGE)] && $::env(STAGE) eq "fp"} { exit }
 
+set_placement_padding -global -left 1 -right 1   ;# 4.2 um: keeps neighbouring metal2 pin pads from blocking each other
 global_placement -density 0.3
 detailed_placement
 check_placement -verbose

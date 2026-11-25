@@ -11,7 +11,7 @@ yosys -m slang -q -p "read_slang --top accel_top -G N=$N -G DW=$DW rtl/accel/acc
 synth -top accel_top -flatten
 dfflegalize -cell \$_DFF_PN0_ 01 -cell \$_DFF_P_ 01
 dfflibmap -liberty syn/scl_tt_clean.lib
-abc -liberty syn/scl_tt_clean.lib
+abc -liberty syn/scl_tt_clean.lib -dont_use MX2101 -dont_use MX201B -dont_use TBUF01 -dont_use MX4122   # off-grid widths (4.2 um site) / no metal2 pin access (MX4122 D3)
 opt_clean
 hilomap -singleton -hicell VDDCON OUT1 -locell VSSCON OUT1
 opt_clean -purge

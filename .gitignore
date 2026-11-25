@@ -13,3 +13,4 @@ xschem/
 pnr/out/
 pnr/last.log
 pnr/route_run.txt
+pnr/run_*.txt
